@@ -1,16 +1,21 @@
--- main -------------------------------------------------- --
+-- main -------------------------------------------------------------------- --
 local utf8 = require("utf8")
 --
--- settings -------------------------------------------------
-bgColor       = {0.2, 0.25, 0.3}   -- background color
-fontColor     = {1, 1, 1, 1}       -- font color
-cursorColor   = {1, 1, 1, 1}       -- cursor color
-sizeFont      = 14                 -- font size
-textPositionX = 10                 -- position x text : start
-textPositionY = 10                 -- position y text : start
-tabSize       = "    "             -- tab size
+-- settings -------------------------------------------------------------------
+bgColor             = {0.18, 0.20, 0.22} -- background color
+fontColor           = {1, 1, 1, 1}       -- font color
+cursorColor         = {1, 1, 1, 1}       -- cursor color
+sizeFont            = 14                 -- font size
+textPositionX       = 10                 -- margin > text position x
+textPositionY       = 5                  -- text position y
+lineNumberColor     = {0.4, 0.4, 0.4}    -- line number color
+marginColor         = {0.4, 0.3, 0.4}    -- margin color
+marginPositionX     = 10                 -- margin move position
+marginPositionFixe  = 30                 -- margin fixe position
+marginMove          = true               -- margin move true/false
+
 --
--- load -----------------------------------------------------
+-- load -----------------------------------------------------------------------
 function love.load()
     mainFont = love.graphics.newFont(
     "fonts/JetBrainsMono-Regular.ttf", sizeFont)
@@ -22,33 +27,84 @@ function love.load()
     love.keyboard.setKeyRepeat(true) -- repeat key
 end
 --
--- text input -----------------------------------------------
+-- text input -----------------------------------------------------------------
 function love.textinput(t)
-    lines[cursorLine] = lines[cursorLine] .. t
+    local line     = lines[cursorLine]
+    local position = utf8.offset(line, cursorColumn) or #line + 1
+
+    local before   = line:sub(1, position - 1)
+    local after    = line:sub(position)
+
+    lines[cursorLine] = before .. t .. after
+    cursorColumn      = cursorColumn + utf8.len(t)
 end
 --
--- key input ------------------------------------------------
+-- key input ------------------------------------------------------------------
 function love.keypressed(key)
     -- fullscreen
     if key == "f1" then
         love.window.setFullscreen(not love.window.getFullscreen())
     end
 
+    -- up
+    if key == "up" and cursorLine > 1 then
+        cursorLine   = cursorLine - 1
+        cursorColumn = math.min(
+            cursorColumn,
+            utf8.len(lines[cursorLine]) + 1)
+    end
+
+    -- down
+    if key == "down" and cursorLine < #lines then
+        cursorLine   = cursorLine + 1
+        cursorColumn = math.min(
+            cursorColumn,
+            utf8.len(lines[cursorLine]) + 1)
+    end
+
+    -- left
+    if key == "left" and cursorColumn > 1 then
+        cursorColumn = cursorColumn - 1
+    end
+
+    -- right
+    if key == "right" and
+        cursorColumn <= utf8.len(lines[cursorLine]) then
+            cursorColumn = cursorColumn + 1
+    end
+
     -- return
     if key == "return" then
-        table.insert(lines, "")
-        cursorLine = cursorLine + 1
+        local line     = lines[cursorLine]
+        local position = utf8.offset(line, cursorColumn) or #line + 1
+
+        local before = line:sub(1, position - 1)
+        local after  = line:sub(position)
+
+        lines[cursorLine] = before
+        table.insert(lines, cursorLine + 1, after)
+
+        cursorLine   = cursorLine + 1
+        cursorColumn = 1
     end
 
     -- backspace
     if key == "backspace" then
         local line = lines[cursorLine]
 
-        if line ~= "" then
-            local position = utf8.offset(line, - 1)
-            lines[cursorLine] = line:sub(1, position - 1)
+        if cursorColumn > 1 then
+            local start  = utf8.offset(line, cursorColumn - 1)
+            local finish = utf8.offset(line, cursorColumn) or #line + 1
+
+            lines[cursorLine] = line:sub(1, start - 1) .. line:sub(finish)
+            cursorColumn      = cursorColumn - 1
 
         elseif cursorLine > 1 then
+            local previous = lines[cursorLine - 1]
+
+            cursorColumn          = utf8.len(previous) + 1
+            lines[cursorLine - 1] = previous .. line
+
             table.remove(lines, cursorLine)
             cursorLine = cursorLine - 1
         end
@@ -56,27 +112,62 @@ function love.keypressed(key)
 
     -- tab
     if key == "tab" then
-        lines[cursorLine] = lines[cursorLine] .. tabSize
+        local line     = lines[cursorLine]
+        local position = utf8.offset(line, cursorColumn) or #line + 1
+
+        local before = line:sub(1, position - 1)
+        local after  = line:sub(position)
+
+        lines[cursorLine] = before .. "    " .. after
+        cursorColumn      = cursorColumn + 4
     end
 end
 --
--- draw -----------------------------------------------------------------
+-- draw -----------------------------------------------------------------------
 function love.draw()
-    love.graphics.setBackgroundColor(bgColor) -- select background color
-    love.graphics.setFont(mainFont)           -- select font
-    love.graphics.setColor(fontColor)         -- select font color
+    love.graphics.setBackgroundColor(bgColor)
+    love.graphics.setFont(mainFont)
+    love.graphics.setColor(fontColor)
 
-    -- text input draw
-    for i = 1, #lines do
-        local x = textPositionX
-        local y = textPositionY + (i - 1) * mainFont:getHeight()
-
-        love.graphics.print(lines[i], x, y)
+    -- margin position
+    local marginWidth = marginPositionFixe
+    if marginMove then
+        marginWidth   = mainFont:getWidth(tostring(#lines)) + 10
     end
 
-    -- cursor position
-    local cursorX = textPositionX + mainFont:getWidth(lines[cursorLine])
-    local cursorY = textPositionY + (cursorLine - 1) * mainFont:getHeight()
+    local textX = marginPositionX + marginWidth + textPositionX
+
+    -- margin
+    love.graphics.setColor(marginColor)
+    love.graphics.line(
+        marginPositionX + marginWidth, 0,
+        marginPositionX + marginWidth, love.graphics.getHeight())
+
+    -- text draw
+    for i = 1, #lines do
+        local y = textPositionY + (i - 1) * mainFont:getHeight()
+
+        -- line number
+        love.graphics.setColor(lineNumberColor)
+        local lineNumber  = tostring(i)
+        local lineNumberX = marginPositionX +
+            marginWidth - 10 - mainFont:getWidth(lineNumber)
+
+        love.graphics.print(lineNumber, lineNumberX, y)
+
+        -- text
+        love.graphics.setColor(fontColor)
+        love.graphics.print(lines[i], textX, y)
+    end
+
+    -- cursor position x
+    local line     = lines[cursorLine]
+    local position = utf8.offset(line, cursorColumn) or #line + 1
+    local cursorX = textX + mainFont:getWidth(line:sub(1, position - 1))
+
+    -- cursor position y
+    local cursorY  = textPositionY + (
+        cursorLine - 1) * mainFont:getHeight()
 
     -- cursor draw
     love.graphics.setColor(cursorColor)
