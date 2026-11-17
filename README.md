@@ -10,4 +10,6 @@ text editor build with framework Löve2d 11.5
 - line numbers with fixe or automatic margin width
 - settings in main.lua (color, font, size, spacing,..)
 - fullscreen with F1
-- 
+
+## in progress
+- mouse input  
